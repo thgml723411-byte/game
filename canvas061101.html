@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>canvas 벽돌게임 </title>
+    <style>
+    body{
+        background: linear-gradient(135deg, #833232, #e78769);
+    }
+    #gameBox{
+        position: relative;/* 자식이위치써야하므로부모가가지고있어야함 */
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        height: 100vh;/* 디스플레이세트를했는데도세로로가지않아서하이값을줌 */
+    }
+    canvas{
+        border: 4px solid #111;
+        background-color: #111;
+        /* margin: 0 auto; 가로가운데도하고세로도하고싶어서지움*/
+    }
+     #restartBtn{
+        position: absolute;
+        left: 50%; top: 50%;
+        transform: translate(-50%,-50%);
+        padding: 12px 28px;
+        
+        /* 💡 미니멀 블랙 스타일 */
+        background-color: #111111; /* 완전 불투명한 블랙 */
+        color: #ffffff;
+        border: 2px solid #ffffff; /* 깔끔한 흰색 실선 */
+        border-radius: 4px; /* 살짝만 둥글게 */
+        
+        font-size: 18px;
+        font-weight: bold;
+        cursor: pointer;
+        display: none;
+        transition: all 0.2s ease-in-out;
+    }
+
+    /* 마우스를 올리면 색상이 반전되는 깔끔한 효과 */
+    #restartBtn:hover {
+        background-color: #ffffff;
+        color: #111111;
+        
+    }
+    </style>
+</head>
+<body>
+    <!--
+     800크기에 벽돌 하나 그리고 띄어쓰기하고 산수 필요 
+     let이너무많음 원래는 객체를 let ball = { x:10,Y:10,} 활용하지만 지금 단순하게하기위해서
+     -->
+    <div id="gameBox">
+        <canvas width="800" height="500"></canvas>
+        <button id="restartBtn">다시 시작</button>
+    </div>
+    <script>
+        const canvas = document.querySelector('canvas')
+        const restartBtn = document.getElementById('restartBtn')
+
+        const ctx = canvas.getContext('2d')
+
+        // 공의 필요한 기본 변수를 정리
+        let ballX;
+        let ballY;
+        let ballR = 10;
+        let ballSpeedX;
+        let ballSpeedY;
+
+        // 바의 필요한 기본 변수를 정리
+        let barX;
+        let barY = canvas.height - 40;
+        let barW = 100;
+        let barH = 15;
+
+        // 벽돌 배열로 정리
+        let bricks = []
+        let bricksRow = 5;
+        let bricksCol = 6;
+        let bricksW = 100;
+        let bricksH = 25;
+        let bricksGap = 15;
+        
+        // 게임 상태 필요한 기본 변수를 정리
+        let gameOver;
+        let aniId;
+
+        function startGame(){
+            // 볼의 정보값을 알려주는 (대소문자 오타 ballx -> ballX 수정)
+            ballX = canvas.width / 2 
+            ballY = canvas.height - 80 
+            ballSpeedX = 4
+            ballSpeedY = -4 
+
+            // 바의 정보값을 알려주는 (ballX로 잘못 입력된 부분을 barX로 수정)
+            barX = canvas.width / 2 - barW / 2  
+
+            // 벽돌 정보값을 알려주는
+            const colors = ['rgb(92, 23, 23)','brown','tomato', 'orangered', 'rgb(212, 107, 58)',]; 
+            bricks = []
+            for(let row = 0; row < bricksRow ; row++){
+                for(let col = 0; col < bricksCol; col++){
+                    bricks.push({
+                        x : 55 + col * (bricksW + bricksGap),
+                        y : 40 + row * (bricksH + bricksGap),
+                        show : true,
+                        color : colors[row] // 생성할 때 줄별 색상을 기억해둡니다.
+                    })
+                }
+            }
+
+            // 상태 정보 초기화
+            gameOver = false
+            restartBtn.style.display = 'none';
+
+            // 애니메이션 실행
+            if (aniId) cancelAnimationFrame(aniId);
+            update();
+        }
+
+        // 마우스 이동에 따라 바(Paddle) 움직이기
+        canvas.addEventListener('mousemove', (e) => {
+            const rect = canvas.getBoundingClientRect();
+            const mouseX = e.clientX - rect.left;
+            // 바가 캔버스 밖으로 나가지 않도록 제한
+            barX = mouseX - barW / 2;
+            if (barX < 0) barX = 0;
+            if (barX + barW > canvas.width) barX = canvas.width - barW;
+        });
+
+        // 물리 연산 및 업데이트 루프
+        function update() {
+            if (gameOver) return;
+
+            // 공 이동
+            ballX += ballSpeedX;
+            ballY += ballSpeedY;
+
+            // 벽 충돌 (좌/우)
+            if (ballX - ballR < 0 || ballX + ballR > canvas.width) {
+                ballSpeedX = -ballSpeedX;
+            }  
+            // 벽 충돌 (위)
+            if (ballY - ballR < 0) {
+                ballSpeedY = -ballSpeedY;
+            }
+
+            // 바(Paddle) 충돌
+            if (ballY + ballR >= barY && ballY - ballR <= barY + barH) {
+                if (ballX >= barX && ballX <= barX + barW) {
+                    ballSpeedY = -Math.abs(ballSpeedY); // 위로 튕기기
+                }
+            }
+
+            // 벽돌 충돌 검사
+            let allCleared = true;
+            for (let i = 0; i < bricks.length; i++) {
+                let b = bricks[i];
+                if (b.show) {
+                    allCleared = false; // 하나라도 남아있으면 클리어 아님
+                    // 공이 벽돌 범위 내에 들어왔는지 검사
+                    if (ballX + ballR > b.x && ballX - ballR < b.x + bricksW &&
+                        ballY + ballR > b.y && ballY - ballR < b.y + bricksH) {
+                        ballSpeedY = -ballSpeedY; // 튕기기
+                        b.show = false; // 벽돌 파괴
+                        break;
+                    }
+                }
+            }
+
+            // 성공 조건 (모든 벽돌 파괴)
+            if (allCleared) {
+                gameOver = true;
+                alert("축하합니다! 클리어하셨습니다.");
+                restartBtn.style.display = 'block';
+            }
+
+            // 실패 조건 (바닥에 떨어짐)
+            if (ballY + ballR > canvas.height) {
+                gameOver = true;
+                restartBtn.style.display = 'block';
+            }
+
+            // 그리기 작동 후 다음 프레임 예약
+            draw();
+            aniId = requestAnimationFrame(update);
+        }
+
+        // 화면 그리기 함수
+        function draw(){
+            ctx.clearRect(0, 0, canvas.width, canvas.height)
+
+            // 1. 공 그리기
+            ctx.beginPath()
+            ctx.fillStyle = 'rgb(223, 247, 6)'
+            ctx.arc(ballX, ballY, ballR, 0, Math.PI * 2);
+            ctx.fill()
+            ctx.closePath()
+
+            // 2. 바(Paddle) 그리기
+            ctx.beginPath()
+            ctx.fillStyle = '#ffaa00'
+            ctx.fillRect(barX, barY, barW, barH)
+            ctx.closePath()
+
+            // 3. 벽돌(Bricks) 그리기
+            // for (let i = 0; i < bricks.length; i++) {
+            //     let b = bricks[i];
+            //     if (b.show) {
+            //         ctx.beginPath()
+            //         ctx.fillStyle = 'tomato'
+            //         ctx.fillRect(b.x, b.y, bricksW, bricksH)
+            //         ctx.closePath()
+            //     }
+            // }
+             for (let i = 0; i < bricks.length; i++) {
+                let b = bricks[i];
+                if (b.show) {
+                    ctx.beginPath()
+                    ctx.fillStyle = b.color // 💡 아까 기억해둔 줄별 색상으로 칠하기!
+                    ctx.fillRect(b.x, b.y, bricksW, bricksH)
+                    ctx.closePath()
+                }
+            }
+
+
+            // 4. 게임 오버 메시지
+            if (gameOver) {
+                ctx.fillStyle = 'white';
+                ctx.font = 'bold 42px Arial'; // 조금 더 선명하게 bold 추가
+                ctx.textAlign = 'center';
+                
+                // 💡 기존 canvas.height / 2 에서 70픽셀을 빼서 위로 올렸습니다!
+                ctx.fillText("GAME OVER", canvas.width / 2, canvas.height / 2 - 50); 
+            }
+         } 
+
+        // 다시 시작 버튼 이벤트 연결 및 첫 실행
+        restartBtn.addEventListener('click', startGame);
+        startGame();
+    </script>
+</body>
+</html>
